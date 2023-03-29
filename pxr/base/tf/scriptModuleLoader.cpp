@@ -159,7 +159,9 @@ TfScriptModuleLoader::GetModulesDict() const
             //
             // For now, we just upper-case the library name.
             //
-            string moduleName = TfStringCapitalize(lib->GetString());
+            string moduleName = lib->GetString();
+            TF_AXIOM(!moduleName.empty());
+            moduleName.front() = std::toupper(moduleName.front());
 
             ret[moduleName] = object(modHandle);
         }

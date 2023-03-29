@@ -176,7 +176,9 @@ std::vector<TfToken> GetPropertyNames(const SdfPrimSpecHandle &prim) {
 
 template<typename PrimType>
 std::string GetPrimLabel(const PrimType &prim) {
-    const std::string spec = TfStringToLower(GetSpecifier(prim));
+    std::string spec = GetSpecifier(prim);
+    TF_AXIOM(!spec.empty());
+    spec.front() = std::tolower(spec.front());
     const std::string typeName = GetTypeName(prim);
     std::string definition = spec;
     if (!typeName.empty()) {
