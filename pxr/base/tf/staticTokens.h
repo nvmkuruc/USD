@@ -80,15 +80,12 @@
 #include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/token.h"
 
+#include <array>
 #include <vector>
 
-#include <boost/preprocessor/control/iif.hpp>
-#include <boost/preprocessor/control/expr_iif.hpp>
-#include <boost/preprocessor/punctuation/comma_if.hpp>
 #include <boost/preprocessor/seq/filter.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/preprocessor/seq/for_each_i.hpp>
-#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -123,17 +120,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 #define TF_DEFINE_PRIVATE_TOKENS(key, seq)                                  \
     namespace {                                                             \
     struct _TF_TOKENS_STRUCT_NAME_PRIVATE(key) {                            \
-        _TF_TOKENS_STRUCT_NAME_PRIVATE(key)() :                             \
-        _TF_TOKENS_INITIALIZE_SEQ(                                          \
-            BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)            \
-            _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                          \
-            {                                                               \
-            _TF_TOKENS_ASSIGN_ARRAY_SEQ(                                    \
-                BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_ARRAY, ~, seq))           \
-            _TF_TOKENS_BUILD_ALLTOKENS_VECTOR(                              \
-                    BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)    \
-                    _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                  \
-            }                                                               \
+        _TF_TOKENS_STRUCT_NAME_PRIVATE(key)() = default;                    \
         _TF_TOKENS_DECLARE_MEMBERS(seq)                                     \
     };                                                                      \
     }                                                                       \
@@ -162,19 +149,61 @@ PXR_NAMESPACE_OPEN_SCOPE
 // Private macro used to generate TfToken member variables.  elem can either
 // be a tuple on the form (name, value) or just a name.
 //
+#define _TF_TOKENS_DECLARE_MEMBER_IMPL_2(identifier, value)                 \
+    TfToken identifier{value, TfToken::Immortal};
+#define _TF_TOKENS_DECLARE_MEMBER_IMPL_1(identifier)                        \
+    TfToken identifier{TF_PP_STRINGIZE(identifier), TfToken::Immortal};
+#define _TF_TOKENS_DECLARE_MEMBER_IMPL(...)                                 \
+    TF_PP_CAT(_TF_TOKENS_DECLARE_MEMBER_IMPL_,                              \
+              TF_PP_VARIADIC_SIZE(__VA_ARGS__))(__VA_ARGS__)
 #define _TF_TOKENS_DECLARE_MEMBER(r, data, elem)                            \
-    TfToken BOOST_PP_IIF(TF_PP_IS_TUPLE(elem),                              \
-        TF_PP_TUPLE_ELEM(0, elem), elem)                                    \
-        BOOST_PP_EXPR_IIF(TF_PP_IS_TUPLE(TF_PP_TUPLE_ELEM(1, elem)),        \
-        [BOOST_PP_SEQ_SIZE(TF_PP_TUPLE_ELEM(0,                              \
-            TF_PP_TUPLE_ELEM(1, elem)))]);
+    _TF_TOKENS_DECLARE_MEMBER_IMPL(TF_PP_EAT_PARENS(elem))
+
+#define _TF_TOKENS_DECLARE_ARRAY_MEMBER_IMPL(identifier, ...)               \
+    std::array<TfToken, TF_PP_VARIADIC_SIZE(__VA_ARGS__)>                   \
+        identifier{{__VA_ARGS__}};
+
+#define _TF_TOKENS_DECLARE_ARRAY_MEMBER(r, data, elem)                      \
+    _TF_TOKENS_DECLARE_ARRAY_MEMBER_IMPL(                                   \
+        TF_PP_TUPLE_ELEM(0, elem),                                          \
+        BOOST_PP_SEQ_ENUM(TF_PP_EAT_PARENS(TF_PP_TUPLE_ELEM(1, elem)))      \
+    )
+
+#define _TF_TOKENS_IDENTIFIER_IMPL(identifier, ...) identifier,
+#define _TF_TOKENS_IDENTIFIER_WRAP(...)                                     \
+    _TF_TOKENS_IDENTIFIER_IMPL(__VA_ARGS__)
+#define _TF_TOKENS_IDENTIFIER(elem)                                         \
+    _TF_TOKENS_IDENTIFIER_WRAP(TF_PP_EAT_PARENS(elem))
+
+// This macro appends an extra TfToken to the initializer_list to complete
+// the sequence. This extra token is then removed by Tf_MakeAllTokens.
+// In C++20, this can likely be reworked and simplified with __VA_OPT__.
+#define _TF_TOKENS_DECLARE_ALL_TOKENS(...)                                  \
+    std::vector<TfToken> allTokens = Tf_MakeAllTokens({                     \
+        TF_PP_FOR_EACH(_TF_TOKENS_IDENTIFIER, __VA_ARGS__)                  \
+        TfToken{}                                                           \
+    });
+
+inline std::vector<TfToken>
+Tf_MakeAllTokens(std::initializer_list<TfToken> tokens) {
+    return {std::begin(tokens), std::prev(std::end(tokens))};
+}
 
 // Private macro used to declare the list of members as TfTokens
-//
-#define _TF_TOKENS_DECLARE_MEMBERS(seq) \
+// The array and allTokens declarations must come after the non-array
+// declarations for correct initialization order.
+#define _TF_TOKENS_DECLARE_MEMBERS(seq)                                     \
     BOOST_PP_SEQ_FOR_EACH(_TF_TOKENS_DECLARE_MEMBER, ~,                     \
-        seq _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                          \
-    std::vector<TfToken> allTokens;
+        BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)                \
+        _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                              \
+    BOOST_PP_SEQ_FOR_EACH(_TF_TOKENS_DECLARE_ARRAY_MEMBER, ~,               \
+        BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_ARRAY, ~, seq))                   \
+    _TF_TOKENS_DECLARE_ALL_TOKENS(                                          \
+        BOOST_PP_SEQ_ENUM(                                                  \
+            BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)            \
+            _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq)                           \
+        )                                                                   \
+    )
 
 // Private macro that expands all array elements to make them members
 // of the sequence.
@@ -199,54 +228,6 @@ PXR_NAMESPACE_OPEN_SCOPE
         ~_TF_TOKENS_STRUCT_NAME(key)();                                     \
         _TF_TOKENS_DECLARE_MEMBERS(seq)                                     \
     };
-
-///////////////////////////////////////////////////////////////////////////////
-// Definition Macros
-
-// Private macros to define members in the tokens struct.
-//
-#define _TF_TOKENS_DEFINE_MEMBER(r, data, i, elem)                          \
-    BOOST_PP_COMMA_IF(i)                                                    \
-    TF_PP_TUPLE_ELEM(0, BOOST_PP_IIF(TF_PP_IS_TUPLE(elem),                  \
-        (_TF_TOKENS_INITIALIZE_MEMBER_TUPLE(elem)),                         \
-        (_TF_TOKENS_INITIALIZE_MEMBER(elem))))
-
-#define _TF_TOKENS_INITIALIZE_MEMBER_TUPLE(elem)                            \
-    TF_PP_TUPLE_ELEM(0, elem)(TF_PP_TUPLE_ELEM(1, elem), TfToken::Immortal)
-
-#define _TF_TOKENS_INITIALIZE_MEMBER(elem)                                  \
-    elem(TF_PP_STRINGIZE(elem), TfToken::Immortal)
-
-#define _TF_TOKENS_DEFINE_ARRAY_MEMBER(r, data, i, elem)                    \
-    data[i] = BOOST_PP_IIF(TF_PP_IS_TUPLE(elem),                            \
-        TF_PP_TUPLE_ELEM(0, elem), elem);
-
-// Private macros to append tokens to the allTokens vector.
-//
-#define _TF_TOKENS_APPEND_MEMBER(r, data, i, elem)                          \
-    BOOST_PP_IIF(TF_PP_IS_TUPLE(elem),                                      \
-        _TF_TOKENS_APPEND_MEMBER_BODY(~, ~,                                 \
-                                      TF_PP_TUPLE_ELEM(0, elem)),           \
-        _TF_TOKENS_APPEND_MEMBER_BODY(~, ~, elem))
-
-#define _TF_TOKENS_APPEND_MEMBER_BODY(r, data, elem)                        \
-    allTokens.push_back(elem);
-
-#define _TF_TOKENS_BUILD_ALLTOKENS_VECTOR(seq)                              \
-    BOOST_PP_SEQ_FOR_EACH_I(_TF_TOKENS_APPEND_MEMBER, ~, seq)
-
-// Private macros to generate the list of initialized members.
-//
-#define _TF_TOKENS_INITIALIZE_SEQ(seq)                                      \
-    BOOST_PP_SEQ_FOR_EACH_I(_TF_TOKENS_DEFINE_MEMBER, ~, seq)
-
-#define _TF_TOKENS_ASSIGN_ARRAY_SEQ(seq)                                    \
-    BOOST_PP_SEQ_FOR_EACH(_TF_TOKENS_DEFINE_ARRAY_MEMBERS, ~, seq)
-
-#define _TF_TOKENS_DEFINE_ARRAY_MEMBERS(r, data, elem)                      \
-    BOOST_PP_SEQ_FOR_EACH_I(_TF_TOKENS_DEFINE_ARRAY_MEMBER,                 \
-        TF_PP_TUPLE_ELEM(0, elem),                                          \
-        TF_PP_TUPLE_ELEM(0, TF_PP_TUPLE_ELEM(1, elem)))
 
 // Private predicate macros to be used by SEQ_FILTER that determine if an
 // element of a sequence is an array of tokens or not.
@@ -274,17 +255,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 //
 #define _TF_DEFINE_TOKENS(key, seq)                                         \
     _TF_TOKENS_STRUCT_NAME(key)::~_TF_TOKENS_STRUCT_NAME(key)() = default;  \
-    _TF_TOKENS_STRUCT_NAME(key)::_TF_TOKENS_STRUCT_NAME(key)() :            \
-        _TF_TOKENS_INITIALIZE_SEQ(                                          \
-            BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)            \
-            _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                          \
-    {                                                                       \
-    _TF_TOKENS_ASSIGN_ARRAY_SEQ(                                            \
-        BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_ARRAY, ~, seq))                   \
-    _TF_TOKENS_BUILD_ALLTOKENS_VECTOR(                                      \
-            BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)            \
-            _TF_TOKENS_EXPAND_ARRAY_ELEMENTS(seq))                          \
-    }
+    _TF_TOKENS_STRUCT_NAME(key)::_TF_TOKENS_STRUCT_NAME(key)() = default;
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
