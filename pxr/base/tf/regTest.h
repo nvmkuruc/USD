@@ -147,7 +147,7 @@ TF_API_TEMPLATE_CLASS(TfSingleton<TfRegTest>);
 /// \ingroup group_tf_Internal
 /// \hideinitializer
 #define TF_ADD_REGTEST(name)    \
-    bool Tf_RegTst##name = TfRegTest::GetInstance().Register(#name, Test_##name)
+    bool Tf_RegTst##name = PXR_NS::TfRegTest::GetInstance().Register(#name, Test_##name)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
