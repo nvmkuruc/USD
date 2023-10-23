@@ -1480,13 +1480,15 @@ SdfLayer::_InitializeFromIdentifier(
         _stateDelegate->_SetLayer(_self);
     }
 
-    // Update the layer registry before sending notices.
-    _layerRegistry->InsertOrUpdate(_self);
-
     // Only send a notice if the identifier has changed (this notice causes
     // mass invalidation. See http://bug/33217). If the old identifier was
     // empty, this is a newly constructed layer, so don't send the notice.
-    if (!oldIdentifier.empty()) {
+    if (oldIdentifier.empty()) {
+        _layerRegistry->Insert(_self);
+    }
+    else {
+        // newInfo now holds the old info.
+        _layerRegistry->Update(_self, *newInfo);
         SdfChangeBlock block;
         if (oldIdentifier != GetIdentifier()) {
             Sdf_ChangeManager::Get().DidChangeLayerIdentifier(

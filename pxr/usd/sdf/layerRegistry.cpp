@@ -118,8 +118,7 @@ struct update_index_only {
 };
 
 void
-Sdf_LayerRegistry::InsertOrUpdate(
-    const SdfLayerHandle& layer)
+Sdf_LayerRegistry::Insert(const SdfLayerHandle& layer)
 {
     TRACE_FUNCTION();
 
@@ -129,7 +128,7 @@ Sdf_LayerRegistry::InsertOrUpdate(
     }
 
     TF_DEBUG(SDF_LAYER).Msg(
-        "Sdf_LayerRegistry::InsertOrUpdate(%s)\n",
+        "Sdf_LayerRegistry::Insert(%s)\n",
         Sdf_LayerDebugRepr(layer).c_str());
 
     // Attempt to insert the layer into the registry. This may fail because
@@ -137,22 +136,54 @@ Sdf_LayerRegistry::InsertOrUpdate(
     std::pair<_Layers::iterator, bool> result = _layers.insert(layer);
     if (!result.second) {
         SdfLayerHandle existingLayer = *result.first;
+        // We failed to insert the layer into the registry because there
+        // is a conflict.
+        TF_CODING_ERROR("Cannot insert duplicate registry entry for "
+            "%s layer %s over existing entry for %s layer %s",
+            layer->GetFileFormat()->GetFormatId().GetText(),
+            Sdf_LayerDebugRepr(layer).c_str(),
+            existingLayer->GetFileFormat()->GetFormatId().GetText(),
+            Sdf_LayerDebugRepr(existingLayer).c_str());
+    }
+}
+
+
+void
+Sdf_LayerRegistry::Update(const SdfLayerHandle& layer,
+                          const Sdf_AssetInfo& oldAssetInfo)
+{
+    TRACE_FUNCTION();
+
+    if (!layer) {
+        TF_CODING_ERROR("Expired layer handle");
+        return;
+    }
+
+    TF_DEBUG(SDF_LAYER).Msg(
+        "Sdf_LayerRegistry::Update(%s)\n",
+        Sdf_LayerDebugRepr(layer).c_str());
+
+    const _LayersByIdentity& byIdentity = _layers.get<by_identity>();
+    if (const auto it = byIdentity.find(layer); it != std::end(byIdentity)) {
+        SdfLayerHandle existingLayer = *it;
         if (layer == existingLayer) {
-            // We failed to insert the layer into the registry because this
-            // layer object is already in the registry. All we need to do is
-            // update the indices so it can be found.
-            _layers.modify(result.first, update_index_only());
+            _layers.modify(it, update_index_only());
         } else {
-            // We failed to insert the layer into the registry because there
-            // is a realPath conflict. This can happen when the same layer is
-            // crated twice in the same location in the same session.
-            TF_CODING_ERROR("Cannot insert duplicate registry entry for "
+            // We failed to update the layer into the registry.
+            // This can happen when the same layer is
+            // created twice in the same location in the same session.
+            TF_CODING_ERROR("Cannot update registry entry for "
                 "%s layer %s over existing entry for %s layer %s",
                 layer->GetFileFormat()->GetFormatId().GetText(),
                 Sdf_LayerDebugRepr(layer).c_str(),
                 existingLayer->GetFileFormat()->GetFormatId().GetText(),
                 Sdf_LayerDebugRepr(existingLayer).c_str());
         }
+    } else {
+        TF_CODING_ERROR("Cannot update registry entry missing %s layer %s "
+                        "entry.",
+                        layer->GetFileFormat()->GetFormatId().GetText(),
+                        Sdf_LayerDebugRepr(layer).c_str());
     }
 }
 

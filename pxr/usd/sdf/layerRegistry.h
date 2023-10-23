@@ -27,6 +27,7 @@
 /// \file sdf/layerRegistry.h
 
 #include "pxr/pxr.h"
+#include "pxr/usd/sdf/assetPathResolver.h"
 #include "pxr/usd/sdf/declareHandles.h"
 #include "pxr/base/tf/hash.h"
 
@@ -56,9 +57,11 @@ public:
     /// Constructor.
     Sdf_LayerRegistry();
 
-    /// Inserts layer into the registry, or updates an existing registry entry
-    /// if an entry is found for the same layer.
-    void InsertOrUpdate(const SdfLayerHandle& layer);
+    /// Inserts layer into the registry
+    void Insert(const SdfLayerHandle& layer);
+
+    /// Updates an existing registry entry, currently identified by oldAssetInfo
+    void Update(const SdfLayerHandle& layer, const Sdf_AssetInfo& oldAssetInfo);
 
     /// Erases the layer from the registry, if found.
     void Erase(const SdfLayerHandle& layer);
