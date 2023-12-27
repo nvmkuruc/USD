@@ -39,6 +39,7 @@
 #include <typeindex>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -135,6 +136,16 @@ inline void
 TfHashAppend(HashState &h, const std::string& s)
 {
     return h.AppendContiguous(s.c_str(), s.length());
+}
+
+// Support for hashing std::variant.
+template <class HashState, class... Types>
+inline void
+TfHashAppend(HashState &h, const std::variant<Types...>& v)
+{
+    // Include the index to avoid transparent hashing.
+    h.Append(v.index());
+    std::visit([&h](auto&& value) { h.Append(value); }, v);
 }
 
 // Support for hashing pointers, but we explicitly delete the version for

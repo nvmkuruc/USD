@@ -315,7 +315,16 @@ Test_TfHash()
            h(std::variant<std::string, int, double>("abc")));
     TF_AXIOM(h(std::variant<std::string, int, double>("abc")) ==
              h(std::variant<std::string, int, double>("abc")));
-
+    // Validate variant support for types without std::hash
+    // implementations.
+    printf("hash(variant): %zu\n",
+           h(std::variant<std::string, Two>("xyz")));
+    TF_AXIOM(h(std::variant<std::string, Two>("xyz")) ==
+             h(std::variant<std::string, Two>("xyz")));
+    printf("hash(variant): %zu\n",
+           h(std::variant<std::string, Two>(Two{1, 10})));
+    TF_AXIOM(h(std::variant<std::string, Two>(Two{1, 10})) ==
+             h(std::variant<std::string, Two>(Two{1, 10})));
     TfHasher tfh;
 
     _TestStatsOne(tfh, "TfHash");
